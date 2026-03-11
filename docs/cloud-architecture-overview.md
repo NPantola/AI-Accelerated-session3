@@ -14,3 +14,22 @@ graph TD
     DB
   end
 ```
+
+## Sequence: Creating a TODO
+
+The following sequence diagram illustrates the main steps when a user creates a new TODO item.
+
+```mermaid
+sequenceDiagram
+  actor U as User (Browser)
+  participant FE as Frontend (React TODO App)
+  participant API as Backend (Node/Express /api/tasks)
+  participant DB as SQLite Task Store
+
+  U->>FE: Enter task details and submit form
+  FE->>API: POST /api/tasks { title, description, due_date }
+  API->>DB: INSERT new task record
+  DB-->>API: Return new task row (id, fields)
+  API-->>FE: 201 Created with task JSON
+  FE-->>U: Update task list with new TODO
+```
