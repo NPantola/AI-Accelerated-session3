@@ -4,18 +4,33 @@
       - Each task record includes a priority field with allowed values "P1", "P2", or "P3".
       - When a new task is created without explicitly selecting a priority, it is saved with priority "P3".
       - Existing tasks created before this change are assigned priority "P3" without losing their existing title or completed status.
+    - Technical Requirements:
+      - Extend the tasks table definition in packages/backend/src/app.js to add a priority TEXT column with a default value of 'P3'.
+      - Update the INSERT and UPDATE statements in the POST /api/tasks and PUT /api/tasks/:id handlers to read and persist req.body.priority, defaulting to 'P3' when omitted.
+      - Ensure the SELECT queries used by GET /api/tasks and GET /api/tasks/:id return the priority column so the frontend receives it with each task.
+      - Update the task shape used in packages/frontend/src/App.js, packages/frontend/src/TaskForm.js, and packages/frontend/src/TaskList.js so each task object includes a priority property.
 
   - Story: Add optional due date field to tasks
     - Acceptance Criteria:
       - Each task record can store an optional dueDate field that may be empty.
       - A task can be created or updated without specifying any dueDate.
       - When a valid due date is provided, it is stored with the task and persists across browser refreshes.
+    - Technical Requirements:
+      - Reuse the existing due_date DATE column in the tasks table defined in packages/backend/src/app.js as the backing store for the optional dueDate.
+      - Keep the due_date column nullable and continue passing null from the POST /api/tasks and PUT /api/tasks/:id handlers when no due date is supplied.
+      - On the frontend, ensure packages/frontend/src/TaskForm.js continues to send a due_date field (string or null) in the request body via onSave so the backend persists it.
+      - Verify that packages/frontend/src/TaskList.js reads the due_date field from the API response and that the tasks state can contain tasks with or without a due_date value.
 
   - Story: Validate due date format as ISO YYYY-MM-DD
     - Acceptance Criteria:
       - When the user enters a date in the ISO format YYYY-MM-DD, the value is accepted and stored as the task's dueDate.
       - When the user enters an invalid date or a non-ISO format, the value is not saved to dueDate and the application continues to function without errors.
       - Tasks with invalid date input behave as if they have no dueDate in all filters and views.
+    - Technical Requirements:
+      - Keep the date input in packages/frontend/src/TaskForm.js as type="date" so the browser enforces the YYYY-MM-DD value it writes into the due_date state.
+      - Ensure the normalizeDateString helper in TaskForm only returns strings that match the ^\d{4}-\d{2}-\d{2}$ pattern or an empty string.
+      - In the backend POST and PUT handlers in packages/backend/src/app.js, treat any non-string or empty due_date value as null before inserting/updating the database.
+      - In future filter logic implemented in packages/frontend/src/TaskList.js, treat any task whose due_date does not match the YYYY-MM-DD pattern as having no due date.
 
 - Epic: Task Creation and Editing
   - Story: Create tasks with title, priority, and due date
@@ -25,12 +40,22 @@
       - If no priority is selected, the task is created with priority "P3".
       - If no dueDate is selected, the task is created without a dueDate.
       - After creation, the new task appears in the All view and, if incomplete with a qualifying dueDate, in the Today or Overdue views.
+    - Technical Requirements:
+      - In packages/frontend/src/TaskForm.js, add a UI control (e.g., MUI Select or radio group) bound to a priority state field with options "P1", "P2", and "P3" and default "P3".
+      - Ensure TaskForm's handleSubmit passes { title, description, due_date, priority } to the onSave callback so packages/frontend/src/App.js can forward priority to the backend.
+      - In packages/frontend/src/App.js, update handleSave to include the priority property when sending the JSON body to POST /api/tasks or PUT /api/tasks/:id.
+      - Confirm that the backend POST /api/tasks route in packages/backend/src/app.js persists the provided priority and returns it in the created task JSON.
 
   - Story: Edit existing task details
     - Acceptance Criteria:
       - A user can open an existing task and change its title, priority, and dueDate.
       - Saving edits updates the task immediately in all views where it appears.
       - Updating a task's dueDate causes it to appear or disappear from the Today and Overdue views according to the defined rules.
+    - Technical Requirements:
+      - Ensure packages/frontend/src/App.js passes the full task object, including id, title, description, due_date, completed, and priority, into the initialTask prop of TaskForm when editing.
+      - Update the useEffect in TaskForm so it initializes both the dueDate and priority inputs based on initialTask when present.
+      - Confirm that App.handleSave issues a PUT request to /api/tasks/:id with the full edited payload, including priority and due_date.
+      - Ensure the backend PUT /api/tasks/:id handler in packages/backend/src/app.js updates all editable fields (title, description, due_date, priority) and returns the updated task.
 
   - Story: Toggle task completion status
     - Acceptance Criteria:
@@ -38,12 +63,21 @@
       - Toggling completion updates the task's completed state without navigating away from the current view.
       - Completed tasks remain visible in the All view.
       - Completed tasks do not appear in the Today or Overdue views, even if their dueDate is today or in the past.
+    - Technical Requirements:
+      - Continue using the Checkbox in packages/frontend/src/TaskList.js as the UI for toggling task.completed.
+      - Keep the PATCH /api/tasks/:id endpoint in packages/backend/src/app.js as the single source of truth for updating the completed boolean.
+      - After a successful PATCH, TaskList should refresh its tasks state (via fetchTasks) so the UI reflects the new completion status.
+      - When filter logic for Today and Overdue is added in TaskList, it must compute visibility based on both completed and due_date fields.
 
 - Epic: Priority Display UI
   - Story: Show priority badges on tasks
     - Acceptance Criteria:
       - Every task in the list shows its current priority as a visible badge next to the title or main text.
       - When a task's priority changes, the badge updates immediately without a page reload.
+    - Technical Requirements:
+      - In packages/frontend/src/TaskList.js, add a visual element (e.g., MUI Chip or custom styled Box) that reads task.priority and displays it alongside the task title.
+      - Ensure the tasks state in TaskList includes the priority property coming from the backend GET /api/tasks response.
+      - When tasks are refetched after an edit, the rendered badge should update automatically based on the new task.priority value.
 
   - Story: Apply color scheme for P1, P2, and P3 badges
     - Acceptance Criteria:
@@ -51,6 +85,10 @@
       - P2 tasks display an orange priority badge.
       - P3 tasks display a gray priority badge.
       - The badge colors are consistent across All, Today, and Overdue views.
+    - Technical Requirements:
+      - Implement conditional styling in the priority badge component in TaskList so task.priority === 'P1' uses a red color theme, 'P2' uses orange, and 'P3' uses gray.
+      - Use a shared styling approach (e.g., a helper function or style object) so the same color mapping is applied regardless of which view is active.
+      - Ensure that the priority badge styling integrates with the existing MUI theme and does not conflict with the due date Chip styling.
 
 - Epic: Task Filters and Views
   - Story: Add All tasks view
@@ -58,30 +96,50 @@
       - An All view is available via a tab or button.
       - In the All view, both completed and incomplete tasks are displayed.
       - The All view includes tasks regardless of whether they have a dueDate.
+    - Technical Requirements:
+      - In packages/frontend/src/App.js or packages/frontend/src/TaskList.js, introduce view state (e.g., 'all' | 'today' | 'overdue') to track the active view.
+      - Implement an All tab/button in TaskList that sets the view state to 'all'.
+      - When view === 'all', render the full tasks array returned from GET /api/tasks without additional filtering beyond any future search options.
 
   - Story: Add Today tasks view
     - Acceptance Criteria:
       - A Today view is available via a tab or button.
       - The Today view shows only incomplete tasks whose dueDate is equal to the user's current local date.
       - Tasks without a dueDate never appear in the Today view.
+    - Technical Requirements:
+      - Add a Today tab/button in TaskList that sets the view state to 'today'.
+      - Implement client-side filtering in TaskList that derives a todayTasks array from tasks based on due_date === today's local date and completed === false.
+      - Use the same date parsing approach as formatDueDate in TaskList to avoid timezone issues when comparing YYYY-MM-DD values.
 
   - Story: Add Overdue tasks view
     - Acceptance Criteria:
       - An Overdue view is available via a tab or button.
       - The Overdue view shows only incomplete tasks whose dueDate is earlier than the user's current local date.
       - Tasks without a dueDate never appear in the Overdue view.
+    - Technical Requirements:
+      - Add an Overdue tab/button in TaskList that sets the view state to 'overdue'.
+      - Implement client-side filtering in TaskList that derives an overdueTasks array from tasks where due_date is before today's local date and completed === false.
+      - Use a helper in TaskList to compute isOverdue(task) based on the YYYY-MM-DD string and local Date object.
 
   - Story: Exclude completed tasks from Today and Overdue views
     - Acceptance Criteria:
       - Completed tasks do not appear in the Today or Overdue views.
       - Marking a task as completed removes it from the Today and Overdue views while leaving it visible in the All view.
       - Marking a completed task as incomplete causes it to reappear in Today or Overdue if its dueDate qualifies.
+    - Technical Requirements:
+      - Ensure the Today and Overdue filter functions in TaskList always include a completed === false condition.
+      - After a successful PATCH /api/tasks/:id call in TaskList, recalculate the filtered lists based on the updated tasks array.
+      - Keep the All view rendering unfiltered tasks so completed tasks remain visible there.
 
   - Story: Provide tab-based navigation between task views
     - Acceptance Criteria:
       - Users can switch between All, Today, and Overdue views using clearly labeled tabs or buttons.
       - The active view is visually indicated.
       - Switching between views does not cause a full page reload and preserves the current task data in memory.
+    - Technical Requirements:
+      - Use MUI Tabs, ToggleButtonGroup, or a similar component in TaskList to render the All, Today, and Overdue controls.
+      - Store the active view in React state in TaskList and use it to determine which filtered list to render.
+      - Do not refetch tasks from the backend solely when switching tabs; reuse the tasks already loaded into state.
 
 - Epic: Local Storage Persistence
   - Story: Persist tasks locally without backend services
@@ -89,12 +147,21 @@
       - Task data is stored using a browser-local mechanism (such as localStorage) with no network requests to a backend.
       - Creating, editing, or completing tasks updates the stored data.
       - The application continues to function correctly if the network is disabled.
+    - Technical Requirements:
+      - Introduce a storage abstraction module in packages/frontend/src (e.g., tasksStorage.js) that exposes getTasks, createTask, updateTask, and deleteTask functions backed by window.localStorage.
+      - Refactor packages/frontend/src/App.js and packages/frontend/src/TaskList.js to use this storage abstraction instead of calling fetch('/api/tasks...') for the MVP configuration.
+      - Define a localStorage key (e.g., 'todo_tasks') and serialize tasks as JSON, including id, title, description, due_date, completed, and priority.
+      - Ensure that all create/edit/complete/delete operations update both React state and the localStorage snapshot.
 
   - Story: Load tasks from local storage on app start
     - Acceptance Criteria:
       - When the app loads, it reads any previously stored tasks and displays them in the appropriate views.
       - If no stored data exists, the app starts with an empty task list without errors.
       - Changes made during a session remain after a full browser refresh.
+    - Technical Requirements:
+      - On initial render in packages/frontend/src/App.js (or TaskList), call the storage abstraction's getTasks to hydrate the tasks state from localStorage.
+      - Handle the case where no data or malformed JSON is present by falling back to an empty array without throwing runtime errors.
+      - Ensure that subsequent updates to tasks state always write back through the storage abstraction so a full page refresh restores the latest list.
 
 - Epic: Teaching-Friendly UX
   - Story: Review task list layout for simplicity
@@ -102,12 +169,20 @@
       - The main task screen shows only essential elements: task list, completion controls, and view filters.
       - No advanced configuration panels or extra features beyond the PRD are introduced in MVP.
       - The layout is readable on a standard laptop resolution without horizontal scrolling.
+    - Technical Requirements:
+      - Review the layout and styling in packages/frontend/src/App.js and packages/frontend/src/TaskList.js to ensure only the task list, completion checkbox, edit/delete actions, and filter controls are visible by default.
+      - Use MUI layout primitives (Container, Box, Paper) to keep the content within the existing maxWidth="md" container.
+      - Avoid adding new persistent sidebars or dialog flows that would complicate the simple single-screen interaction.
 
   - Story: Streamline task form for classroom demonstrations
     - Acceptance Criteria:
       - The task creation/edit form includes fields only for title, priority, and due date.
       - Form labels for title, priority, and due date are clear and concise.
       - Creating or updating a task requires at most filling the fields and clicking a single button to save.
+    - Technical Requirements:
+      - Adjust packages/frontend/src/TaskForm.js so the form inputs are limited to title, optional description (if kept), priority selector, and due date picker, without additional advanced fields.
+      - Ensure the form uses a single submit button wired to handleSubmit, which calls the onSave prop and then resets the local state as appropriate.
+      - Keep form validation minimal: require a non-empty title and rely on the native date input for due date validity.
 
 - Epic: Overdue Task Highlighting
   - Story: Visually highlight overdue tasks
@@ -115,31 +190,54 @@
       - Overdue tasks (incomplete tasks with a dueDate earlier than today) have a distinct visual style, such as red text, border, or background.
       - Non-overdue tasks do not use the overdue visual style.
       - Changing a task's completion state or dueDate immediately adds or removes the overdue highlighting as appropriate.
+    - Technical Requirements:
+      - In packages/frontend/src/TaskList.js, add a helper that determines whether a task is overdue by comparing task.due_date (YYYY-MM-DD) to today's local date and checking !task.completed.
+      - Extend the existing ListItem sx styling in TaskList to apply a distinct color/border/background when a task is flagged as overdue.
+      - Ensure that any change to completed or due_date triggers a re-render with the correct overdue styling based on the latest tasks state.
 
   - Story: Differentiate overdue tasks from upcoming tasks
     - Acceptance Criteria:
       - Users can visually distinguish overdue tasks from tasks due today or in the future without reading the dates.
       - Tasks due today do not use the same styling as overdue tasks.
       - Adjusting a dueDate so it is no longer overdue removes the overdue styling.
+    - Technical Requirements:
+      - Use a different visual treatment (e.g., neutral or accent color) for tasks due today or in the future so they do not share the overdue styling.
+      - Ensure the isOverdue helper in TaskList returns false for tasks whose due_date is equal to or greater than today.
+      - When due_date is edited in TaskForm and saved, TaskList should recompute overdue vs. upcoming styling based on the updated date.
 
 - Epic: Task Sorting Rules
   - Story: Sort tasks with overdue items first
     - Acceptance Criteria:
       - In the All view, overdue tasks are listed before non-overdue tasks.
       - Updating a task's dueDate or completion status immediately updates its position relative to overdue and non-overdue groups.
+    - Technical Requirements:
+      - Implement client-side sorting in packages/frontend/src/TaskList.js that orders tasks for rendering based on isOverdue(task) before other factors.
+      - Optionally, adjust the ORDER BY clause in the GET /api/tasks query in packages/backend/src/app.js once priority is added so the backend sort roughly aligns with the overdue-first rule.
+      - After any update to due_date or completed, recompute the sorted array before rendering the list.
 
   - Story: Sort tasks by priority within groups
     - Acceptance Criteria:
       - Within the overdue group and within the non-overdue group, tasks are ordered by priority: P1 first, then P2, then P3.
       - Changing a task's priority reorders it correctly within its group.
+    - Technical Requirements:
+      - Define a priorityRank mapping in TaskList (e.g., { P1: 1, P2: 2, P3: 3 }) and use it in the client-side sort comparator.
+      - Ensure the sort function runs after tasks are filtered into overdue/non-overdue groups so priority is applied within each group.
+      - Once the priority column exists in the backend, consider updating the SQL ORDER BY in GET /api/tasks to include priority for consistency.
 
   - Story: Sort tasks by due date within priority
     - Acceptance Criteria:
       - For tasks with the same overdue status and priority, tasks with earlier dueDate appear before tasks with later dueDate.
       - Editing a task's dueDate repositions it according to this rule.
+    - Technical Requirements:
+      - In the TaskList sort comparator, when two tasks share the same overdue status and priorityRank, compare their due_date values (treating null as greater than any date) to determine order.
+      - Parse due_date strings into Date objects or compare them lexicographically as YYYY-MM-DD strings to avoid timezone issues.
 
   - Story: Place tasks without due dates at the end of lists
     - Acceptance Criteria:
       - Tasks without a dueDate always appear after tasks with any valid dueDate within the same view.
       - Adding a dueDate to an undated task moves it into the dated section according to the other sorting rules.
       - Removing a dueDate from a task moves it to the end of the list within its priority and overdue/non-overdue group.
+    - Technical Requirements:
+      - In the TaskList sort comparator, treat tasks with null/empty due_date as having the lowest precedence when comparing dates.
+      - Ensure the comparator remains stable enough that tasks without dates stay grouped at the end but still respect priority ordering among themselves.
+      - When TaskForm clears a due date and the change is saved, verify that the updated task moves to the end of its group on the next render.
